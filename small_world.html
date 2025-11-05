@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watts-Strogatz Small World Model</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --surface-color: #1e1e1e;
+            --text-color: #e0e0e0;
+            --text-muted: #888;
+            --primary-color: #00aaff;
+            --accent-green: #00ff00;
+            --accent-red: #ff0000;
+            --accent-path: #ff4500;
+            --border-color: #333;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: grid;
+            grid-template-columns: 370px 1fr;
+            grid-template-rows: 100vh;
+            gap: 20px;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .controls {
+            background: var(--surface-color);
+            padding: 25px;
+            border-radius: 8px;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+        }
+        .visualization {
+            background: var(--surface-color);
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            position: relative;
+            overflow: hidden;
+        }
+        svg {
+            width: 100%;
+            height: 100%;
+        }
+        .node {
+            stroke: #fff;
+            stroke-width: 1.5px;
+            cursor: pointer;
+            transition: r 0.2s ease;
+        }
+        .node:hover {
+            stroke: var(--primary-color);
+            stroke-width: 3px;
+        }
+        .node.selected-start {
+            fill: var(--accent-green) !important;
+            stroke: #000;
+            stroke-width: 3px;
+        }
+        .node.selected-end {
+            fill: var(--accent-red) !important;
+            stroke: #000;
+            stroke-width: 3px;
+        }
+        .link {
+            stroke: #555;
+            stroke-opacity: 0.6;
+        }
+        .link.path {
+            stroke: var(--accent-path);
+            stroke-opacity: 1;
+            stroke-width: 4px;
+        }
+        .node.path {
+            fill: var(--accent-path);
+            stroke: var(--accent-path);
+            stroke-width: 3px;
+        }
+        h2, h3 {
+            margin-top: 0;
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 8px;
+            color: #fff;
+        }
+        .control-group {
+            margin-bottom: 18px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        input[type="range"], input[type="number"], select {
+            width: 100%;
+            padding: 5px;
+            box-sizing: border-box;
+            background: #333;
+            color: var(--text-color);
+            border: 1px solid #555;
+            border-radius: 4px;
+        }
+        span.slider-value {
+            float: right;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+        button {
+            background-color: var(--primary-color);
+            color: #000;
+            font-weight: bold;
+            border: none;
+            padding: 12px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 15px;
+            width: 100%;
+            margin-top: 10px;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #33bbff;
+        }
+        button.secondary {
+            background-color: #444;
+            color: var(--text-color);
+            margin-top: 15px;
+        }
+        button.secondary:hover {
+            background-color: #555;
+        }
+        #results {
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 2px solid var(--border-color);
+        }
+        #path-info {
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #fff;
+            margin-top: 10px;
+        }
+        .metrics p {
+            margin: 8px 0;
+            font-size: 0.95em;
+        }
+        .metrics span {
+            font-weight: bold;
+            color: var(--primary-color);
+            font-family: "Courier New", Courier, monospace;
+            font-size: 1.1em;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="controls">
+        <h2>Small World Model</h2>
+        <p style="font-size: 0.9em; color: var(--text-muted); margin-top: -10px;">Models "six degrees" (high clustering, short paths).</p>
+        
+        <div id="model-params">
+            <h3>1. Model Parameters</h3>
+            <div class="control-group">
+                <label for="n-slider">Nodes (N): <span id="n-value" class="slider-value">50</span></label>
+                <input type="range" id="n-slider" min="10" max="200" value="50">
+            </div>
+            <div class="control-group">
+                <label for="k-slider">Neighbors (K): <span id="k-value" class="slider-value">4</span></label>
+                <input type="range" id="k-slider" min="2" max="10" value="4" step="2">
+            </div>
+            <div class="control-group">
+                <label for="p-slider">Shortcut Probability (p): <span id="p-value" class="slider-value">0.00</span></label>
+                <input type="range" id="p-slider" min="0" max="1" value="0" step="0.01">
+            </div>
+        </div>
+        
+        <button id="generate-btn">Generate Network</button>
+
+        <div id="results">
+            <h3>2. Test Results</h3>
+            <p>Click two nodes to find the "degree of separation."</p>
+            <button id="clear-path-btn" class="secondary">Clear Path Selection</button>
+
+            <div id="path-info">Select two nodes...</div>
+            <h4 style="margin-bottom: 5px; margin-top: 20px;">Global Metrics</h4>
+            <div class="metrics">
+                <p><strong>Clustering (C):</strong> <span id="clustering-value">N/A</span></p>
+                <p><strong>Avg. Path (L):</strong> <span id="path-length-value">N/A</span></p>
+                <p><strong>Node Count:</strong> <span id="node-count">0</span></p>
+                <p><strong>Link Count:</strong> <span id="link-count">0</span></p>
+            </div>
+        </div>
+    </div>
+
+    <div class="visualization">
+        <svg id="chart"></svg>
+    </div>
+
+    <script>
+        // --- Globals ---
+        let nodes = [];
+        let links = [];
+        let simulation;
+        let svg, linkGroup, nodeGroup, g;
+        let width, height;
+        let selectedStartNode = null;
+        let selectedEndNode = null;
+        let adj = new Map(); // Adjacency list
+
+        // --- DOM Elements ---
+        const generateBtn = document.getElementById('generate-btn');
+        const clearPathBtn = document.getElementById('clear-path-btn');
+        const clusteringEl = document.getElementById('clustering-value');
+        const pathLengthEl = document.getElementById('path-length-value'); // Target for Avg. Path
+        const pathInfoEl = document.getElementById('path-info');
+        const nodeCountEl = document.getElementById('node-count');
+        const linkCountEl = document.getElementById('link-count');
+
+        // Sliders
+        const nSlider = document.getElementById('n-slider');
+        const kSlider = document.getElementById('k-slider');
+        const pSlider = document.getElementById('p-slider');
+        const nValue = document.getElementById('n-value');
+        const kValue = document.getElementById('k-value');
+        const pValue = document.getElementById('p-value');
+
+        // --- D3 Setup ---
+        function setupVisualization() {
+            svg = d3.select("#chart");
+            width = svg.node().getBoundingClientRect().width;
+            height = svg.node().getBoundingClientRect().height;
+
+            svg.html(""); // Clear previous
+            g = svg.append("g");
+
+            svg.call(d3.zoom()
+                .extent([[0, 0], [width, height]])
+                .scaleExtent([0.1, 8])
+                .on("zoom", (event) => g.attr("transform", event.transform)));
+
+            linkGroup = g.append("g").attr("class", "links").selectAll("line");
+            nodeGroup = g.append("g").attr("class", "nodes").selectAll("circle");
+
+            simulation = d3.forceSimulation()
+                .force("link", d3.forceLink().id(d => d.id).distance(40).strength(0.1))
+                .force("charge", d3.forceManyBody().strength(-150))
+                .force("center", d3.forceCenter(width / 2, height / 2))
+                .on("tick", ticked);
+        }
+        setupVisualization();
+
+        // --- Event Listeners ---
+        generateBtn.onclick = () => {
+            clearPath();
+            generateWattsStrogatz();
+            updateSimulation();
+            buildAdjacencyList();
+            calculateMetrics();
+        };
+
+        clearPathBtn.onclick = clearPath;
+
+        // Slider listeners
+        nSlider.oninput = () => { nValue.textContent = nSlider.value; };
+        kSlider.oninput = () => { kValue.textContent = kSlider.value; };
+        pSlider.oninput = () => { pValue.textContent = d3.format(".2f")(pSlider.value); };
+
+        // --- Model Generator ---
+
+        function generateWattsStrogatz() {
+            const N = parseInt(nSlider.value);
+            const K = parseInt(kSlider.value);
+            const p = parseFloat(pSlider.value);
+
+            nodes = d3.range(N).map(i => ({ id: i }));
+            links = [];
+            const linkExists = new Set();
+
+            // 1. Create regular ring lattice
+            for (let i = 0; i < N; i++) {
+                for (let j = 1; j <= K / 2; j++) {
+                    const target = (i + j) % N;
+                    const source = i;
+                    links.push({ source, target });
+                    linkExists.add(`${Math.min(source, target)}-${Math.max(source, target)}`);
+                }
+            }
+
+            // 2. Rewire (create shortcuts)
+            if (p > 0) {
+                for (let i = 0; i < N; i++) {
+                    for (let j = 1; j <= K / 2; j++) {
+                        if (Math.random() < p) {
+                            const source = i;
+                            const oldTarget = (i + j) % N;
+                            let newTarget;
+
+                            // Find a new target
+                            do {
+                                newTarget = Math.floor(Math.random() * N);
+                            } while (
+                                newTarget === source || 
+                                linkExists.has(`${Math.min(source, newTarget)}-${Math.max(source, newTarget)}`)
+                            );
+
+                            const linkIndex = links.findIndex(l => 
+                                (l.source === source && l.target === oldTarget) ||
+                                (l.source === oldTarget && l.target === source)
+                            );
+                            
+                            if (linkIndex !== -1) {
+                                const originalLink = links[linkIndex];
+                                linkExists.delete(`${Math.min(originalLink.source, originalLink.target)}-${Math.max(originalLink.source, originalLink.target)}`);
+                                
+                                links[linkIndex] = { source: source, target: newTarget };
+                                linkExists.add(`${Math.min(source, newTarget)}-${Math.max(source, newTarget)}`);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- D3 Update and Drawing ---
+
+        function updateSimulation() {
+            // Update links
+            linkGroup = linkGroup.data(links, d => `${d.source.id}-${d.target.id}`);
+            linkGroup.exit().remove();
+            linkGroup = linkGroup.enter().append("line")
+                .attr("class", "link")
+                .merge(linkGroup);
+
+            // Update nodes
+            nodeGroup = nodeGroup.data(nodes, d => d.id);
+            nodeGroup.exit().remove();
+            nodeGroup = nodeGroup.enter().append("circle")
+                .attr("r", 7) // Fixed radius
+                .attr("class", "node")
+                .style("fill", d => d3.interpolateViridis(d.id / nodes.length))
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended))
+                .on("click", nodeClicked)
+                .merge(nodeGroup);
+            
+            nodeGroup.select("title").remove();
+            nodeGroup.append("title").text(d => `Node ${d.id}\nDegree: ${adj.get(d.id)?.size || 0}`);
+            
+            simulation.nodes(nodes);
+            simulation.force("link").links(links);
+            simulation.alpha(1).restart();
+        }
+
+        function ticked() {
+            linkGroup
+                .attr("x1", d => d.source.x)
+                .attr("y1", d => d.source.y)
+                .attr("x2", d => d.target.x)
+                .attr("y2", d => d.target.y);
+            
+            nodeGroup
+                .attr("cx", d => d.x)
+                .attr("cy", d => d.y);
+        }
+
+        function dragstarted(event) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            event.subject.fx = event.subject.x;
+            event.subject.fy = event.subject.y;
+        }
+        function dragged(event) {
+            event.subject.fx = event.x;
+            event.subject.fy = event.y;
+        }
+        function dragended(event) {
+            if (!event.active) simulation.alphaTarget(0);
+            event.subject.fx = null;
+            event.subject.fy = null;
+        }
+
+        // --- Path Finding (BFS) ---
+
+        function nodeClicked(event, d) {
+            if (!selectedStartNode) {
+                selectedStartNode = d;
+                d3.select(this).classed('selected-start', true);
+                pathInfoEl.textContent = `Start: Node ${d.id}. Select end node...`;
+            } else if (!selectedEndNode) {
+                if (d.id === selectedStartNode.id) return;
+                selectedEndNode = d;
+                d3.select(this).classed('selected-end', true);
+                pathInfoEl.textContent = `Finding path: ${selectedStartNode.id} -> ${selectedEndNode.id}`;
+                findShortestPath(selectedStartNode, selectedEndNode);
+            } else {
+                clearPath();
+                selectedStartNode = d;
+                d3.select(this).classed('selected-start', true);
+                pathInfoEl.textContent = `Start: Node ${d.id}. Select end node...`;
+            }
+        }
+
+        function clearPath() {
+            selectedStartNode = null;
+            selectedEndNode = null;
+            
+            d3.selectAll('.node')
+                .classed('selected-start', false)
+                .classed('selected-end', false)
+                .classed('path', false);
+            
+            d3.selectAll('.link').classed('path', false);
+            pathInfoEl.textContent = "Select two nodes...";
+        }
+
+        function findShortestPath(startNode, endNode) {
+            const queue = [[startNode.id]];
+            const visited = new Set([startNode.id]);
+            let path = null;
+
+            while (queue.length > 0) {
+                const currentPath = queue.shift();
+                const currentNodeId = currentPath[currentPath.length - 1];
+
+                if (currentNodeId === endNode.id) {
+                    path = currentPath;
+                    break;
+                }
+
+                for (const neighborId of adj.get(currentNodeId)) {
+                    if (!visited.has(neighborId)) {
+                        visited.add(neighborId);
+                        const newPath = [...currentPath, neighborId];
+                        queue.push(newPath);
+                    }
+                }
+            }
+            
+            if (path) {
+                pathInfoEl.textContent = `Shortest Path: ${path.length - 1} degrees`;
+                highlightPath(path);
+            } else {
+                pathInfoEl.textContent = `No path found between ${startNode.id} and ${selectedEndNode.id}`;
+            }
+        }
+
+        function highlightPath(pathNodeIds) {
+            const pathNodeSet = new Set(pathNodeIds);
+            const pathLinkSet = new Set();
+            for (let i = 0; i < pathNodeIds.length - 1; i++) {
+                pathLinkSet.add(`${pathNodeIds[i]}-${pathNodeIds[i+1]}`);
+                pathLinkSet.add(`${pathNodeIds[i+1]}-${pathNodeIds[i]}`);
+            }
+
+            nodeGroup.classed('path', d => pathNodeSet.has(d.id));
+            linkGroup.classed('path', d => 
+                pathLinkSet.has(`${d.source.id}-${d.target.id}`) ||
+                pathLinkSet.has(`${d.target.id}-${d.source.id}`)
+            );
+        }
+
+        // --- Metric Calculations ---
+
+        function buildAdjacencyList() {
+            adj.clear();
+            nodes.forEach(n => adj.set(n.id, new Set()));
+            links.forEach(l => {
+                // Handle both link directions for undirected graph
+                adj.get(l.source.id).add(l.target.id);
+                adj.get(l.target.id).add(l.source.id);
+            });
+        }
+
+        // --- BFS helper for Average Path Length ---
+        function bfsShortestPaths(startNodeId) {
+            const distances = new Map(); // Stores {nodeId: distance}
+            const queue = [[startNodeId, 0]]; // [nodeId, distance]
+            distances.set(startNodeId, 0);
+            
+            let head = 0;
+            while (head < queue.length) {
+                const [currentNodeId, distance] = queue[head++];
+                
+                const neighbors = adj.get(currentNodeId);
+                if (neighbors) {
+                    for (const neighborId of neighbors) {
+                        if (!distances.has(neighborId)) {
+                            distances.set(neighborId, distance + 1);
+                            queue.push([neighborId, distance + 1]);
+                        }
+                    }
+                }
+            }
+            return distances;
+        }
+
+        function calculateMetrics() {
+            if (nodes.length === 0) return;
+            nodeCountEl.textContent = nodes.length;
+            linkCountEl.textContent = links.length;
+
+            // 1. Clustering Coefficient
+            let totalClustering = 0;
+            nodes.forEach(node => {
+                const neighbors = Array.from(adj.get(node.id));
+                if (neighbors.length < 2) return;
+
+                let triangleCount = 0;
+                for (let i = 0; i < neighbors.length; i++) {
+                    for (let j = i + 1; j < neighbors.length; j++) {
+                        if (adj.get(neighbors[i]).has(neighbors[j])) {
+                            triangleCount++;
+                        }
+                    }
+                }
+                const possibleTriangles = neighbors.length * (neighbors.length - 1) / 2;
+                totalClustering += (triangleCount / possibleTriangles);
+            });
+            const avgClustering = totalClustering / nodes.length;
+            clusteringEl.textContent = d3.format(".4f")(avgClustering);
+
+            // 2. Average Path Length (L)
+            let totalDistance = 0;
+            let totalPairs = 0;
+
+            for (let i = 0; i < nodes.length; i++) {
+                const startNodeId = nodes[i].id;
+                const distances = bfsShortestPaths(startNodeId); // BFS from node i
+
+                // Sum distances for all pairs (i, j) where j > i
+                for (let j = i + 1; j < nodes.length; j++) {
+                    const endNodeId = nodes[j].id;
+                    const d = distances.get(endNodeId);
+
+                    if (d !== undefined) { // If path exists
+                        totalDistance += d;
+                        totalPairs++;
+                    }
+                }
+            }
+
+            if (totalPairs === 0) {
+                pathLengthEl.textContent = "N/A (Disconnected)";
+            } else {
+                const avgPathLength = totalDistance / totalPairs;
+                pathLengthEl.textContent = d3.format(".4f")(avgPathLength);
+            }
+
+            // Update node tooltips
+            nodeGroup.select("title").text(d => `Node ${d.id}\nDegree: ${adj.get(d.id)?.size || 0}`);
+        }
+
+        // --- Initial Load ---
+        generateWattsStrogatz();
+        updateSimulation();
+        buildAdjacencyList();
+        calculateMetrics();
+        
+    </script>
+</body>
+</html>
